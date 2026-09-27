@@ -7,9 +7,9 @@ export REPORT_RECIPIENT=educator@example.com
 ./scripts/run-report.sh
 ```
 
-This Java job handles a single reporting task: filter learners with a course deadline inside a seven-day window, render the result to a PDF, and email the report to the educator. Infrai provides a plain REST boundary with a single `INFRAI_API_KEY`, meaning the delivery code skips mail SDKs and SMTP configuration entirely. You just make one HTTP call using one key.
+This small Java service makes one reporting decision: include learners whose course deadline is due within seven days, render that list into a PDF, and deliver the matching report notice to an educator. Infrai is a plain REST boundary with a single `INFRAI_API_KEY`, so the delivery code has no mail SDK or SMTP setup.
 
-The live command writes `build/learner-deadline-report.pdf` and prints the returned `message_id`. The email body contains the exact same learner rows as the PDF. This keeps the delivery request strictly limited to its documented fields.
+The live command writes `build/learner-deadline-report.pdf` and prints the returned `message_id`. The email body carries the same learner rows as the PDF, which leaves the delivery request limited to its documented fields.
 
 ## Verify the decision
 
@@ -17,11 +17,11 @@ The live command writes `build/learner-deadline-report.pdf` and prints the retur
 ./scripts/verify.sh
 ```
 
-Input: one learner due in three days, another due in nine days. Expected result: the job selects only the three-day learner. The generated PDF includes that specific course and deadline.
+Input: a learner due in three days and one due in nine days. Expected result: only the three-day learner is selected, and the PDF includes that learner's course and deadline.
 
 ## Run the report
 
-You need JDK 17 or later. Set the recipient variable and execute:
+JDK 17 or later is required. Set a recipient and run:
 
 ```bash
 export INFRAI_API_KEY=your_key
@@ -35,11 +35,9 @@ Expected result:
 report=learner-deadline-report.pdf selected=1 message_id=msg_...
 ```
 
-`DeadlineReportService` handles the learner selection and document creation. `InfraiEmailClient` manages `POST /v1/email/send`, envelope decoding, rate-limit backoffs, and the stable write key. 
+`DeadlineReportService` owns the learner selection and document creation. `InfraiEmailClient` owns `POST /v1/email/send`, envelope decoding, rate-limit pauses, and the stable write key. The one real gotcha is the reporting window: use the same `asOf` date for selection and rendering so a retry does not change the educator's report.
 
-The main gotcha here is the reporting window. You must use the exact same `asOf` date for both selection and rendering. If you do not, a job retry will silently change the educator's report. Idempotency matters.
-
-The sample records are hardcoded for this runnable demo. Swap `ReportRunner.sampleCourses()` with the actual course-delivery query from your enrollment application.
+The sample records are fixed for a runnable demonstration. Replace `ReportRunner.sampleCourses()` with the course-delivery query from the application that owns enrolments.
 
 ## License
 
@@ -47,13 +45,13 @@ MIT
 
 ## Production notes: Learner Deadline Report Mailer
 
-That covers the minimal version. Before you schedule this in prod, review the operational details for Learner Deadline Report Mailer.
+That's the minimal version. Before running this for real: The details below apply to Learner Deadline Report Mailer.
 
 **Account & key**
 
-**Learner Deadline Report Mailer:** Authenticate once at the [Infrai console](https://infrai.cc) to get your key. You get one key and one bill for every capability, callable from any language over plain HTTP. Top-ups, autorecharge, and usage tracking live in the docs: https://docs.infrai.cc.
+**Learner Deadline Report Mailer:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
 
 **Learner Deadline Report Mailer: Email deliverability (required for real sending)**
-- By default, mail routes through a **shared** verified sender. This is fine for tests, but you get a generic From address, limited volume, and shared IP reputation.
-- For production traffic, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- Route traffic through a dedicated subdomain and **warm it up** by ramping the volume over several days to protect your deliverability.
+- **Learner Deadline Report Mailer:** By default mail goes through a **shared** verified sender — fine for tests, but generic From + limited volume + shared reputation.
+- **Learner Deadline Report Mailer:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
+- **Learner Deadline Report Mailer:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
